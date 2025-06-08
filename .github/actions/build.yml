@@ -1,0 +1,199 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  meson:
+    name: Meson Build & Test
+    runs-on: ubuntu-latest
+    env:
+      MESON_BUILDDIR: build
+      MESON_ARGS: -Dc_args="-fno-common" -Dprefix=/usr -Dxephyr=true -Dwerror=true -Dxcsecurity=true -Dxv=true -Dxvmc=true
+      CCACHE_COMPILERCHECK: content
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      LC_ALL: C.UTF-8
+      XTEST_DIR: /root/xts
+      PIGLIT_DIR: /root/piglit
+      LP_NUM_THREADS: 0
+      MESON_DDX_BUILD_ARGS: >-
+        -Dxwayland=true -Dxorg=true -Dxephyr=true -Dxvfb=true -Dxnest=true
+      MESON_EXTRA_ARGS: ${{ env.MESON_DDX_BUILD_ARGS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip ninja-build meson ccache \
+            pkg-config libpixman-1-dev libxkbfile-dev libxfont2-dev libxcb-xfixes0-dev \
+            libxcb-dri3-dev libxcb-present-dev libxcb-glx0-dev libxcb-shm0-dev \
+            libxcb-xkb-dev x11proto-dev libdrm-dev autoconf automake libtool
+          pip3 install --user mako
+
+      - name: Setup ccache
+        run: |
+          echo "CCACHE_BASEDIR=$PWD" >> $GITHUB_ENV
+          echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
+          ccache --show-stats || true
+
+      - name: Build with Meson
+        run: |
+          meson setup $MESON_BUILDDIR $MESON_ARGS $MESON_EXTRA_ARGS
+          ninja -C $MESON_BUILDDIR
+
+      - name: Run tests
+        run: ninja -C $MESON_BUILDDIR test
+
+      - name: Show ccache stats
+        run: ccache --show-stats || true
+
+      - name: Archive meson logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meson-logs
+          path: ${{ env.MESON_BUILDDIR }}/meson-logs/
+
+  meson-noglamor:
+    name: Meson (No Glamor)
+    needs: meson
+    runs-on: ubuntu-latest
+    env:
+      MESON_BUILDDIR: build-noglamor
+      MESON_EXTRA_ARGS: -Dglamor=false -Dxwayland=true -Dxorg=true -Dxephyr=true -Dxvfb=true -Dxnest=true
+      MESON_ARGS: -Dc_args="-fno-common" -Dprefix=/usr -Dwerror=true -Dxcsecurity=true -Dxv=true -Dxvmc=true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y python3-pip ninja-build meson ccache
+      - name: Build (noglamor)
+        run: |
+          meson setup $MESON_BUILDDIR $MESON_ARGS $MESON_EXTRA_ARGS
+          ninja -C $MESON_BUILDDIR
+
+  xwayland-nolibdecor:
+    name: Xwayland (No libdecor)
+    needs: meson
+    runs-on: ubuntu-latest
+    env:
+      MESON_BUILDDIR: build-xwayland-nolibdecor
+      MESON_EXTRA_ARGS: -Dlibdecor=false -Dxwayland=true -Dxorg=false -Dxephyr=false -Dxvfb=false -Dxnest=false
+      MESON_ARGS: -Dc_args="-fno-common" -Dprefix=/usr -Dwerror=true -Dxcsecurity=true -Dxv=true -Dxvmc=true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y python3-pip ninja-build meson ccache
+      - name: Build (no libdecor)
+        run: |
+          meson setup $MESON_BUILDDIR $MESON_ARGS $MESON_EXTRA_ARGS
+          ninja -C $MESON_BUILDDIR
+
+  mingw-cross-build:
+    name: MinGW Cross Build
+    runs-on: ubuntu-latest
+    env:
+      MESON_BUILDDIR: build-mingw
+      MESON_ARGS: --cross-file=.gitlab-ci/cross-i686-w64-mingw32.txt -Dglx=false -Dlisten_tcp=true -Dxvmc=true -Dxv=true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cross-deps
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 meson ninja-build ccache
+      - name: Build with meson (mingw)
+        run: |
+          meson setup $MESON_BUILDDIR $MESON_ARGS
+          ninja -C $MESON_BUILDDIR
+
+  meson-dist:
+    name: Meson Dist Tarball
+    needs: meson
+    runs-on: ubuntu-latest
+    env:
+      MESON_BUILDDIR: build
+      MESON_DIST_ARGS: --no-tests
+      MESON_EXTRA_ARGS: -Dprefix=${{ github.workspace }}/xserver-tarball/install/
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y python3-pip ninja-build meson ccache
+
+      - name: Prepare tarball
+        run: |
+          meson setup $MESON_BUILDDIR $MESON_EXTRA_ARGS
+          ninja -C $MESON_BUILDDIR dist
+          mkdir xserver-tarball
+          tar xf $MESON_BUILDDIR/meson-dist/xserver-*.tar.xz -C xserver-tarball --strip-components=1
+          meson setup xserver-tarball $MESON_EXTRA_ARGS
+          ninja -C xserver-tarball install
+
+      - name: Archive tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: xserver-tarball
+          path: xserver-tarball/
+
+  driver-build-test:
+    name: Driver Build Matrix
+    needs: meson-dist
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - repo: https://gitlab.freedesktop.org/xorg/driver/xf86-input-elographics
+            sha: xf86-input-elographics-1.4.4
+          - repo: https://gitlab.freedesktop.org/xorg/driver/xf86-input-evdev
+            sha: xf86-input-evdev-2.11.0
+          # Add more driver entries here as needed...
+    env:
+      MESON_ARGS: -Dprefix=/usr/
+      MESON_EXTRA_ARGS: -Dxwayland=false -Dxnest=false -Dxvfb=false -Dxquartz=false -Ddocs=false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y meson ninja-build autoconf automake libtool pkg-config
+
+      - name: Download xserver-tarball artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: xserver-tarball
+          path: ${{ github.workspace }}/xserver-tarball
+
+      - name: Build driver ${{ matrix.repo }}
+        run: |
+          export PKG_CONFIG_PATH=$(pwd)/xserver-tarball/install/lib/x86_64-linux-gnu/pkgconfig
+          export ACLOCAL_PATH=$(pwd)/xserver-tarball/install/share/aclocal/
+          DRIVER=$(basename ${{ matrix.repo }})
+          git clone ${{ matrix.repo }} $DRIVER
+          git -C $DRIVER checkout ${{ matrix.sha }}
+          if [[ -e "$DRIVER/meson.build" ]] && [[ "$DRIVER" != "xf86-video-intel" ]]; then
+            meson setup $DRIVER/build $MESON_ARGS $MESON_EXTRA_ARGS
+            ninja -C $DRIVER/build
+          else
+            pushd $DRIVER
+            ./autogen.sh || true
+            make
+            popd
+          fi
+
+  # FreeBSD job placeholder (requires self-hosted runner)
+  freebsd:
+    name: FreeBSD Build (requires self-hosted runner)
+    if: false
+    runs-on: [self-hosted, freebsd]
+    env:
+      MESON_ARGS: -Dglx=false -Dglamor=false -Dudev=false -Dudev_kms=false -Dxvmc=true -Dxv=true
+      MESON_BUILDDIR: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps (customize for FreeBSD)
+        run: sudo pkg install -y git gcc pkgconf autoconf automake libtool xorg-macros xorgproto bash meson ninja pixman xtrans libXau libXdmcp libXfont2 libxkbfile libxcvt libpciaccess font-util
+      - name: Build
+        run: |
+          git gc
+          git clone --depth=1 https://gitlab.freedesktop.org/xorg/proto/xorgproto.git dep.xorgproto
+          cd dep.xorgproto && ./autogen.sh --prefix=/usr && make && sudo make install && cd ..
+          meson setup $MESON_BUILDDIR $MESON_ARGS
+          ninja -C $MESON_BUILDDIR
