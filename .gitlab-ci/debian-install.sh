@@ -61,7 +61,6 @@ apt-get install -y \
 	libudev-dev \
 	libunwind-dev \
 	libwayland-dev \
-	libx11-dev \
 	libx11-xcb-dev \
 	libxau-dev \
 	libxaw7-dev \
