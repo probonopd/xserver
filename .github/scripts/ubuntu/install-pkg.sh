@@ -50,7 +50,6 @@ apt-get install -y \
 	libsystemd-dev \
 	libudev-dev \
 	libunwind-dev \
-	libx11-dev \
 	libx11-xcb-dev \
 	libxau-dev \
 	libxcb-glx0-dev \
