@@ -49,7 +49,6 @@ apt-get install -y \
 	libudev-dev \
 	libunwind-dev \
  	libsystemd-dev \
-	libx11-xcb-dev \
 	libxau-dev \
 	libxcb-glx0-dev \
 	libxcb-icccm4-dev \
