@@ -31,6 +31,7 @@ apt-get install -y \
 	libdbus-1-dev \
 	libdrm-dev \
 	libegl1-mesa-dev \
+	libelogind-dev \
 	libepoxy-dev \
 	libevdev2 \
 	libexpat1 \
