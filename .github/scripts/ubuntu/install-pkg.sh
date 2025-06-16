@@ -31,7 +31,6 @@ apt-get install -y \
 	libdbus-1-dev \
 	libdrm-dev \
 	libegl1-mesa-dev \
-	libelogind-dev \
 	libepoxy-dev \
 	libevdev2 \
 	libexpat1 \
@@ -49,6 +48,7 @@ apt-get install -y \
 	libspice-protocol-dev \
 	libudev-dev \
 	libunwind-dev \
+ 	libsystemd-dev \
 	libx11-xcb-dev \
 	libxau-dev \
 	libxcb-glx0-dev \
