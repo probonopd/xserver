@@ -91,7 +91,6 @@ apt-get install -y \
 	xkb-data \
 	xtrans-dev \
 	xutils-dev \
-	libxaw7-dev \
 	python3-mako \
 
 #	python3-attr \
