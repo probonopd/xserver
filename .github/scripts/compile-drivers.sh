@@ -6,7 +6,8 @@ set -e
 
 export PKG_CONFIG_PATH="/usr/local/lib/x86_64-linux-gnu/pkgconfig/:$PKG_CONFIG_PATH"
 export ACLOCAL_PATH="/usr/share/aclocal:/usr/local/share/aclocal"
-export XORG_DRV_GIT=https://gitlab.freedesktop.org/xorg/driver
+# export XORG_DRV_GIT=https://gitlab.freedesktop.org/xorg/driver
+export XORG_DRV_GIT=https://github.com/X11Libre/
 
 mkdir -p $DRV_BUILD_DIR
 cd $DRV_BUILD_DIR
